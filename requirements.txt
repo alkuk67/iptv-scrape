@@ -1,3 +1,5 @@
 scrapling>=0.4.15
 playwright>=1.62.0
 curl-cffi>=0.7.0
+orjson>=3.9.0
+lxml>=4.9.0
