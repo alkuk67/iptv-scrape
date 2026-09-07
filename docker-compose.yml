@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  iptv-scraper:
+    build: .
+    image: iptv-scrape:latest
+    container_name: iptv-scrape
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+    # For ARM devices like 玩客云, uncomment below:
+    # platform: linux/arm64
