@@ -33,5 +33,6 @@ jobs:
           path: |
             data/multicast_sources_filtered.json
             data/channels_all.json
+            data/channels_alive.json
             data/scraper.log
           retention-days: 7
