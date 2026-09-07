@@ -76,9 +76,41 @@ def rand_page_delay():
 
 
 def fetch_multicast_sources():
-    f = StealthyFetcher()
-    r = f.fetch("http://www.foodieguide.com/iptvsearch/iptvmulticast.php")
-    return r.body.decode("utf-8", errors="replace")
+    """Fetch multicast sources with retry and verification handling."""
+    url = "http://www.foodieguide.com/iptvsearch/iptvmulticast.php"
+    last_body = None
+    last_status = None
+    
+    for attempt in range(3):
+        try:
+            f = StealthyFetcher()
+            r = f.fetch(url)
+            last_body = r.body
+            last_status = r.status
+            
+            # Check if we got blocked/verified
+            body_text = r.body.decode("utf-8", errors="replace")
+            if "verify" in r.url.lower() or "tonkiang" in r.url.lower():
+                print(f"  [WARNING] Redirected to verification page (attempt {attempt+1})")
+                if attempt < 2:
+                    time.sleep(10)
+                    continue
+            
+            # Check if content looks like actual source list
+            if len(body_text) > 5000 and "result" in body_text:
+                return body_text
+            
+            print(f"  [WARNING] Unexpected response: status={r.status}, len={len(body_text)}")
+            if attempt < 2:
+                time.sleep(5)
+                
+        except Exception as e:
+            print(f"  [WARNING] Fetch attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(8)
+    
+    # Return whatever we got
+    return last_body.decode("utf-8", errors="replace") if last_body else ""
 
 
 def parse_multicast_sources(html):
