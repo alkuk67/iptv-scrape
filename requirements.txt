@@ -1,0 +1,2 @@
+scrapling>=0.4.15
+playwright>=1.62.0
