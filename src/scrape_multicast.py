@@ -76,41 +76,61 @@ def rand_page_delay():
 
 
 def fetch_multicast_sources():
-    """Fetch multicast sources with retry and verification handling."""
+    """Fetch multicast sources using Playwright to bypass verification."""
     url = "http://www.foodieguide.com/iptvsearch/iptvmulticast.php"
-    last_body = None
-    last_status = None
     
-    for attempt in range(3):
+    for attempt in range(5):
         try:
-            f = StealthyFetcher()
-            r = f.fetch(url)
-            last_body = r.body
-            last_status = r.status
-            
-            # Check if we got blocked/verified
-            body_text = r.body.decode("utf-8", errors="replace")
-            if "verify" in r.url.lower() or "tonkiang" in r.url.lower():
-                print(f"  [WARNING] Redirected to verification page (attempt {attempt+1})")
-                if attempt < 2:
-                    time.sleep(10)
-                    continue
-            
-            # Check if content looks like actual source list
-            if len(body_text) > 5000 and "result" in body_text:
-                return body_text
-            
-            print(f"  [WARNING] Unexpected response: status={r.status}, len={len(body_text)}")
-            if attempt < 2:
-                time.sleep(5)
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent=BROWSER_UA,
+                    viewport={"width": 1920, "height": 1080},
+                    locale="zh-CN",
+                    timezone_id="Asia/Shanghai",
+                )
+                context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+                )
+                page = context.new_page()
                 
+                # First visit Google to set natural referer
+                page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=30000)
+                time.sleep(2)
+                
+                # Then visit target
+                page.goto(url, wait_until="networkidle", timeout=90000)
+                current_url = page.url
+                
+                # Check if blocked
+                if "verify" in current_url.lower() or "tonkiang" in current_url.lower():
+                    print(f"  [INFO] Verification page detected (attempt {attempt+1}/5)")
+                    browser.close()
+                    if attempt < 4:
+                        wait = 15 + attempt * 5
+                        print(f"  [INFO] Waiting {wait}s before retry...")
+                        time.sleep(wait)
+                        continue
+                
+                body_text = page.content()
+                browser.close()
+                
+                # Validate response
+                if len(body_text) > 5000 and "result" in body_text:
+                    print(f"  [INFO] Got valid response ({len(body_text)} bytes)")
+                    return body_text
+                
+                print(f"  [WARNING] Unexpected response: len={len(body_text)}")
+                if attempt < 4:
+                    time.sleep(10)
+                    
         except Exception as e:
             print(f"  [WARNING] Fetch attempt {attempt+1} failed: {e}")
-            if attempt < 2:
-                time.sleep(8)
+            if attempt < 4:
+                time.sleep(12)
     
-    # Return whatever we got
-    return last_body.decode("utf-8", errors="replace") if last_body else ""
+    print("  [ERROR] Failed to fetch after 5 attempts")
+    return ""
 
 
 def parse_multicast_sources(html):
