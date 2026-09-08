@@ -25,14 +25,19 @@ jobs:
       - name: Run scraper (skip probe, no UDP reachability on GitHub)
         run: python src/scrape_multicast.py --skip-probe
 
+      - name: Commit and push updated data
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/
+          git diff --cached --quiet || git commit -m "update iptv data [skip ci]"
+          git push
+
       - name: Save results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: iptv-data
           path: |
-            data/multicast_sources_filtered.json
-            data/channels_all.json
-            data/channels_alive.json
-            data/scraper.log
+            data/
           retention-days: 7
