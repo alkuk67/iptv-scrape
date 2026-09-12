@@ -24,7 +24,7 @@ import logging
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_SOURCES = os.path.join(BASE_DIR, "data", "multicast_sources_filtered.json")
 OUTPUT_CHANNELS = os.path.join(BASE_DIR, "data", "channels_all.json")
-MAX_PAGES_PER_SOURCE = 5
+MAX_PAGES_PER_SOURCE = 10
 MIN_DELAY_PAGE = 5.0
 MAX_DELAY_PAGE = 10.0
 EXTRA_DELAY_EVERY_N_PAGES = 10
@@ -75,9 +75,8 @@ def rand_page_delay():
     return random.uniform(MIN_DELAY_PAGE, MAX_DELAY_PAGE)
 
 
-def fetch_multicast_sources():
+def fetch_multicast_sources(url):
     """Fetch multicast sources using Playwright to bypass verification."""
-    url = "http://www.foodieguide.com/iptvsearch/iptvmulticast.php"
     
     for attempt in range(5):
         try:
@@ -177,6 +176,23 @@ def parse_multicast_sources(html):
 
 def filter_hotel_sources(sources):
     return [s for s in sources if s.get("survival_days", 0) > 0]
+
+def fetch_all_multicast_sources():
+    all_sources = []
+    seen_ips = set()
+    for page in range(1, 4):
+        url = "http://www.foodieguide.com/iptvsearch/iptvmulticast.php" if page == 1 else f"http://www.foodieguide.com/iptvsearch/iptvmulticast.php?page={page}&iphone16=&code="
+        print(f"\n[INFO] Fetching source list page {page} ...")
+        html = fetch_multicast_sources(url)
+        sources = parse_multicast_sources(html)
+        print(f"[INFO] Page {page}: {len(sources)} parsed")
+        for s in sources:
+            if s["ip"] not in seen_ips:
+                seen_ips.add(s["ip"])
+                all_sources.append(s)
+        if page < 3:
+            time.sleep(random.uniform(MIN_DELAY_PAGE, MAX_DELAY_PAGE))
+    return all_sources
 
 
 
@@ -299,7 +315,7 @@ def fetch_channels_playwright(ip, tk):
                 print(f"      p={p}: empty, stopping")
                 break
             pdelay = rand_page_delay()
-            if page_count % EXTRA_DELAY_EVERY_N_PAGES == 0:
+            if page_count > 0 and page_count % EXTRA_DELAY_EVERY_N_PAGES == 0:
                 extra = random.uniform(MIN_EXTRA_DELAY, MAX_EXTRA_DELAY)
                 print(f"      -- extra pause {extra:.0f}s (every {EXTRA_DELAY_EVERY_N_PAGES} pages) --")
                 pdelay += extra
@@ -327,8 +343,7 @@ def main(skip_probe=False):
     print("=" * 60)
     print("\n[1/4] Fetching multicast source list...")
     time.sleep(DELAY_INIT)
-    html = fetch_multicast_sources()
-    all_sources = parse_multicast_sources(html)
+    all_sources = fetch_all_multicast_sources()
     logger.info("  Total sources found: %d", len(all_sources))
     hotel_sources = filter_hotel_sources(all_sources)
     logger.info("  Hotel sources (survival_days > 0): %d", len(hotel_sources))
