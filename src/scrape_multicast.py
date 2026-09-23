@@ -24,13 +24,13 @@ import logging
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_SOURCES = os.path.join(BASE_DIR, "data", "multicast_sources_filtered.json")
 OUTPUT_CHANNELS = os.path.join(BASE_DIR, "data", "channels_all.json")
-MAX_PAGES_PER_SOURCE = 10
+MAX_PAGES_PER_SOURCE = 20
 MIN_DELAY_PAGE = 5.0
 MAX_DELAY_PAGE = 10.0
 EXTRA_DELAY_EVERY_N_PAGES = 10
 MIN_EXTRA_DELAY = 30.0
 MAX_EXTRA_DELAY = 60.0
-MAX_SESSION_SECS = 600
+MAX_SESSION_SECS = 800
 DELAY_INIT = 3.0
 PLAYWRIGHT_TIMEOUT = 90000
 
@@ -180,7 +180,7 @@ def filter_hotel_sources(sources):
 def fetch_all_multicast_sources():
     all_sources = []
     seen_ips = set()
-    for page in range(1, 4):
+    for page in range(1, 8):
         url = "http://www.foodieguide.com/iptvsearch/iptvmulticast.php" if page == 1 else f"http://www.foodieguide.com/iptvsearch/iptvmulticast.php?page={page}&iphone16=&code="
         print(f"\n[INFO] Fetching source list page {page} ...")
         html = fetch_multicast_sources(url)
@@ -190,7 +190,7 @@ def fetch_all_multicast_sources():
             if s["ip"] not in seen_ips:
                 seen_ips.add(s["ip"])
                 all_sources.append(s)
-        if page < 3:
+        if page < 7:
             time.sleep(random.uniform(MIN_DELAY_PAGE, MAX_DELAY_PAGE))
     return all_sources
 
