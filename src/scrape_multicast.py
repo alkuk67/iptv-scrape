@@ -13,7 +13,7 @@ import time
 import sys
 import html as htmlmod
 from datetime import datetime
-from scrapling import StealthyFetcher
+
 from playwright.sync_api import sync_playwright
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.request
@@ -24,13 +24,13 @@ import logging
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_SOURCES = os.path.join(BASE_DIR, "data", "multicast_sources_filtered.json")
 OUTPUT_CHANNELS = os.path.join(BASE_DIR, "data", "channels_all.json")
-MAX_PAGES_PER_SOURCE = 20
+MAX_PAGES_PER_SOURCE = 10
 MIN_DELAY_PAGE = 5.0
 MAX_DELAY_PAGE = 10.0
 EXTRA_DELAY_EVERY_N_PAGES = 10
 MIN_EXTRA_DELAY = 30.0
 MAX_EXTRA_DELAY = 60.0
-MAX_SESSION_SECS = 800
+MAX_SESSION_SECS = 600
 DELAY_INIT = 3.0
 PLAYWRIGHT_TIMEOUT = 90000
 
@@ -141,6 +141,8 @@ def parse_multicast_sources(html):
         if not m:
             continue
         item["ip"] = htmlmod.unescape(m.group(1))
+        pm = re.search(r'href="channellist\.html\?ip=[^"]*?[?&](?:amp;)?p=(\d+)', part)
+        item["start_page"] = int(pm.group(1)) if pm else 1
         t = re.search(r'tk=([a-f0-9]+)', part)
         item["tk"] = t.group(1) if t else ""
         c = re.search(r'<b>(\d+)</b>', part)
@@ -180,7 +182,7 @@ def filter_hotel_sources(sources):
 def fetch_all_multicast_sources():
     all_sources = []
     seen_ips = set()
-    for page in range(1, 8):
+    for page in range(1, 4):
         url = "http://www.foodieguide.com/iptvsearch/iptvmulticast.php" if page == 1 else f"http://www.foodieguide.com/iptvsearch/iptvmulticast.php?page={page}&iphone16=&code="
         print(f"\n[INFO] Fetching source list page {page} ...")
         html = fetch_multicast_sources(url)
@@ -190,7 +192,7 @@ def fetch_all_multicast_sources():
             if s["ip"] not in seen_ips:
                 seen_ips.add(s["ip"])
                 all_sources.append(s)
-        if page < 7:
+        if page < 3:
             time.sleep(random.uniform(MIN_DELAY_PAGE, MAX_DELAY_PAGE))
     return all_sources
 
@@ -257,7 +259,7 @@ def probe_channels(channels):
     print(f"      Done: {alive_count} alive, {dead_count} dead out of {total}")
     return ordered
 
-def fetch_channels_playwright(ip, tk):
+def fetch_channels_playwright(ip, tk, start_page=1):
     sys.stdout.reconfigure(encoding="utf-8")
     all_urls, all_names = [], []
     page_count = 0
@@ -274,45 +276,51 @@ def fetch_channels_playwright(ip, tk):
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
         )
         page = ctx.new_page()
-        for p in range(1, MAX_PAGES_PER_SOURCE + 1):
+        for p in range(start_page, start_page + MAX_PAGES_PER_SOURCE):
             if time.time() - session_start > MAX_SESSION_SECS:
                 print(f"      Session limit ({MAX_SESSION_SECS}s) reached after {page_count} pages, stopping")
                 break
-            captured = {}
-
-            def make_h(d):
-                def fn(resp):
-                    if "getall" in resp.url:
-                        d["text"] = resp.text()
-                        d["status"] = resp.status
-                return fn
-
-            h = make_h(captured)
-            page.on("response", h)
             url = f"http://www.foodieguide.com/iptvsearch/channellist.html?ip={ip}&tk={tk}&p={p}"
             try:
-                page.goto(url, wait_until="networkidle", timeout=PLAYWRIGHT_TIMEOUT)
-                time.sleep(2)
+                with page.expect_response(
+                    lambda resp: "getall.php" in resp.url,
+                    timeout=PLAYWRIGHT_TIMEOUT,
+                ) as response_info:
+                    page.goto(
+                        url,
+                        wait_until="domcontentloaded",
+                        timeout=PLAYWRIGHT_TIMEOUT,
+                    )
+                response = response_info.value
+                status = response.status
+                text = response.text()
             except Exception as e:
-                print(f"      Page {p} error: {e}")
-                if h:
-                    page.remove_listener("response", h)
-                time.sleep(rand_page_delay())
-                continue
-            if h:
-                page.remove_listener("response", h)
-            text = captured.get("text", "")
-            if len(text) > 500:
-                urls = [u.strip() for u in re.findall(r"'(https?://[^\s'<>]+)'", text)]
-                names = [n.strip() for n in re.findall(r'class="tip"[^>]*>([^<]+)<', text) if n.strip()]
+                print(f"      p={p}: response error ({e}), stopping")
+                break
+            body_lower = text.lower()
+            is_challenge = any(
+                marker in body_lower
+                for marker in ("recaptcha", "not a robot", "cdn-cgi")
+            ) or any(
+                marker in text
+                for marker in ("请完成安全验证", "人机验证", "验证您是真人")
+            )
+            if is_challenge or status not in (200, 201):
+                reason = "protection challenge" if is_challenge else f"HTTP {status}"
+                print(f"      p={p}: {reason} ({len(text)} bytes), stopping")
+                break
+
+            urls = [u.strip() for u in re.findall(r"'(https?://[^\s'<>]+)'", text)]
+            names = [n.strip() for n in re.findall(r'class="tip"[^>]*>([^<]+)<', text) if n.strip()]
+            if urls or names:
                 print(f"      p={p}: got {len(urls)} channels")
                 all_urls.extend(urls)
                 all_names.extend(names)
                 page_count += 1
-            elif p == 1:
+            elif p == start_page == 1:
                 pass
             else:
-                print(f"      p={p}: empty, stopping")
+                print(f"      p={p}: empty ({status}, {len(text)} bytes), stopping")
                 break
             pdelay = rand_page_delay()
             if page_count > 0 and page_count % EXTRA_DELAY_EVERY_N_PAGES == 0:
@@ -361,7 +369,11 @@ def main(skip_probe=False):
     total_channels = 0
     for i, src in enumerate(hotel_sources):
         logger.info("[%d/%d] %s (c=%d, %s)...", i+1, len(hotel_sources), src["ip"], src.get("channel_count", 0), src.get("survival_status", ""))
-        channels = fetch_channels_playwright(src["ip"], src["tk"])
+        channels = fetch_channels_playwright(
+            src["ip"],
+            src["tk"],
+            start_page=src.get("start_page", 1),
+        )
         logger.info("      -> %d channels fetched", len(channels))
         for ch in channels:
             ch["ip"] = src["ip"]
@@ -376,6 +388,9 @@ def main(skip_probe=False):
             logger.info("      -> waiting %.1fs before next source...", rd)
             time.sleep(rd)
     logger.info("Saving raw results...")
+    if not all_results:
+        logger.error("No channels fetched; refusing to overwrite %s", OUTPUT_CHANNELS)
+        raise RuntimeError("No channels fetched")
     os.makedirs(os.path.dirname(OUTPUT_CHANNELS), exist_ok=True)
     with open(OUTPUT_CHANNELS, "w", encoding="utf-8") as f:
         json.dump(all_results, f, ensure_ascii=False, indent=2)
