@@ -1513,3 +1513,6 @@
 22:07:09 [INFO]   Total: 1334 channels from 14 sources
 22:07:09 [INFO]   Saved to /home/runner/work/iptv-scrape/iptv-scrape/data/channels_all.json
 22:07:09 [INFO] Skipping probe (CI mode)
+22:16:57 [INFO]   Total sources found: 0
+22:16:57 [INFO]   Hotel sources (survival_days > 0): 0
+22:16:57 [INFO]   No hotel sources found. Exiting.
