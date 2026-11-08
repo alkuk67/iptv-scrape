@@ -2965,3 +2965,15 @@
 22:37:38 [INFO]   Total: 622 channels from 12 sources
 22:37:38 [INFO]   Saved to /home/runner/work/iptv-scrape/iptv-scrape/data/channels_all.json
 22:37:38 [INFO] Skipping probe (CI mode)
+23:00:00 [INFO]   Total sources found: 12
+23:00:00 [INFO]   Hotel sources (survival_days > 0): 2
+23:00:00 [INFO]   Saved to /home/runner/work/iptv-scrape/iptv-scrape/data/multicast_sources_filtered.json
+23:00:00 [INFO] [1/2] sccckj.cn (c=299, 存活1天)...
+23:00:17 [INFO]       -> 299 channels fetched
+23:00:17 [INFO]       -> waiting 7.1s before next source...
+23:00:24 [INFO] [2/2] 218.1.222.61 (c=201, 存活1天)...
+23:00:36 [INFO]       -> 201 channels fetched
+23:00:36 [INFO] Saving raw results...
+23:00:36 [INFO]   Total: 500 channels from 2 sources
+23:00:36 [INFO]   Saved to /home/runner/work/iptv-scrape/iptv-scrape/data/channels_all.json
+23:00:36 [INFO] Skipping probe (CI mode)
